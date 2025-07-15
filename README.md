@@ -130,3 +130,6 @@ print(rho_sim_1, rho_sim_2, MRT_1, MRT_2)
 - Approximating the Performance of Three-State Emergency Service Systems. 
 
 ## Contact
+
+- Cheng Hua: cheng.hua@sjtu.edu.cn
+- Tianyi Ma: tm693@cornell.edu
