@@ -1,10 +1,10 @@
+from block_prob import *
+from scipy.special import comb
+from scipy import sparse
+from scipy.sparse.linalg import spsolve
 import random
 import time
 import math
-from scipy import sparse
-from scipy.sparse.linalg import spsolve
-from scipy.special import comb
-from block_prob import *
 
 def Get_Effective_Lambda(L, Mu, N):
     """
@@ -74,6 +74,7 @@ class Two_State_Hypercube():
         frac_j = np.random.random(size=K)
         frac_j /= sum(frac_j)
         self.data_dict['frac_j'] = frac_j
+        return frac_j
 
     def Random_Mu(self, average_mu, radius=0.2, seed=9001):
         """
@@ -111,7 +112,6 @@ class Two_State_Hypercube():
 
     def Myopic_Policy(self, source='t_mat'):
         # Obtain the policy to dispatch the cloest available unit given the time matrix
-        N, K = self.data_dict['N'], self.data_dict['K']
         if source == 't_mat':
             t_mat = self.data_dict['t_mat']
             pre_list = t_mat.argsort(axis=1)
@@ -119,16 +119,8 @@ class Two_State_Hypercube():
         elif source == 'pre':
             pre_list = self.data_dict['pre_list']
         else:
-            print('Wrong source!')
-        policy = np.zeros([2 ** N, K], dtype=int)
-        for s in range(2 ** N):
-            for j in range(K):
-                pre = pre_list[j]
-                for n in range(N):
-                    if not s >> pre[n] & 1:  # n th choice is free
-                        policy[s, j] = pre[n]
-                        break
-        self.data_dict['pol'] = policy
+            pre_list = -1
+        return pre_list
 
     def Cal_Trans(self, vec_flag):
         """
@@ -177,7 +169,7 @@ class Two_State_Hypercube():
         b[-1] = 1
         start_time = time.time()  # staring time
         prob_dist = np.linalg.solve(transition, b)
-        print("------ Hypercube run %s seconds ------" % (time.time() - start_time))
+        # print("------ Hypercube run %s seconds ------" % (time.time() - start_time))
         if update_rho:  # store the utilizations
             statusmat = [("{0:0" + str(N) + "b}").format(i) for i in range(2 ** N)]
             busy = [[N - 1 - j for j in range(N) if i[j] == '1'] for i in statusmat]
@@ -201,10 +193,14 @@ class Two_State_Hypercube():
         return MRT, MRT_j
 
     # For Approximation
-    def Cal_P_n(self):
+    def Cal_P_n(self, Lambda_in=None):
         keys = ['N', 'Lambda', 'Mu']
         N, Lambda, Mu = [self.data_dict.get(key) for key in keys]
+        if Lambda_in is not None:
+            Lambda = Lambda_in
         P_n = ErlangLoss(Lambda, Mu, N)
+        if Lambda_in is not None:
+            self.P_n = P_n
         return P_n
 
     def Cal_Q(self, P_n=None, r=None):
@@ -225,13 +221,13 @@ class Two_State_Hypercube():
         if r is None:
             r = np.dot(P_n, np.arange(N + 1)) / N
         for j in range(N):
-            Q[j] = sum([math.factorial(k) / math.factorial(k - j) * math.factorial(N - j) / math.factorial(N) * (
+            Q[j] = sum([(math.factorial(k) / math.factorial(k - j)) * (math.factorial(N - j) / math.factorial(N)) * (
                     N - k) / (N - j) * P_n[k] for k in range(j, N)]) / (r ** (j) * (1 - r))
         self.Q = Q
         self.r = r
         return Q
 
-    def Two_State_Approx(self, normalize=False, use_effective_lambda=True, epsilon=0.0001, flag_diff_mu=0):
+    def Larson_Approx(self, normalize=False, use_effective_lambda=True, once=False, epsilon=0.00001, flag_diff_mu=0):
         """
         Approximate utilization for each subsystem,
         alpha is considered when the other subsystem exists.
@@ -269,11 +265,12 @@ class Two_State_Hypercube():
             ######################
             # Use the effective lambda to get the most accurate P_n and Q for each iteration (This helps a lot)
             if use_effective_lambda:
-                L = rho_total.sum()
-                Lambda_eff = Get_Effective_Lambda(L, Mu, N)
-                P_n = ErlangLoss(Lambda_eff, Mu, N)
-                self.P_n = P_n
-                self.Cal_Q(P_n=P_n, r=L/N)  # when use this Q, the old Q is overwritten and does not work
+                if not once:
+                    L = rho_total.sum()
+                    Lambda_eff = Get_Effective_Lambda(L, Mu, N)
+                    P_n = ErlangLoss(Lambda_eff, Mu, N)
+                    self.P_n = P_n
+                    self.Cal_Q(P_n=P_n, r=L/N)  # when use this Q, the old Q is overwritten and does not work
             ######################
             for i in range(N):  # for each unit
                 value = 1  #
@@ -304,16 +301,34 @@ class Two_State_Hypercube():
 
             # Step 3: Convergence Test
             if abs(rho_i_ - rho_i).max() < epsilon:
-                print ('Program stop in',n,'iterations in ', (time.time() - start_time), 'secs')
+                if once:
+                    L = rho_total.sum()
+                    Lambda_eff = Get_Effective_Lambda(L, Mu, N)
+                    P_n = ErlangLoss(Lambda_eff, Mu, N)
+                    self.P_n = P_n
+                    self.Cal_Q(P_n=P_n, r=L / N)
+                    for i in range(N):  # for each unit
+                        value = 1  #
+                        for k in range(N):  # for each order
+                            prod_g_j = 0  # Product term for each sum term
+                            for j in self.G[i][k]:
+                                prod_g_j += Lambda * frac_j[j] * self.Q[k] * np.prod(
+                                    rho_total[pre_list[j, :k]])  # if alpha = 0, this is just rho in paranthasis
+                            if flag_diff_mu == 1:
+                                value += (1 / Mu_vec[i]) * prod_g_j
+                            else:
+                                value += (1 / Mu) * prod_g_j  # This line is edited for heterogeneous Mu
+                        rho_i_[i] = (1 - ((1 - rho_i) * alpha)[i]) * (
+                                1 - 1 / value)
                 self.rho_approx = rho_i_
                 return rho_i_
             else:  # go to next step
                 rho_i = np.array(rho_i_)
                 rho_i_ = np.zeros(N)
 
-    def Two_State_Approx_Mu_nj(self, epsilon=0.0001):  # This function includes heterogeneous mu
+    def Larson_Approx_Mu_nj(self, epsilon=0.0001):  # This function includes heterogeneous mu
         """
-        Similar to Two_State_Approx(), but mu is heterogeneous among units and atoms.
+        Similar to Larson_Approx(), but mu is heterogeneous among units and atoms.
         We only consider no normalize and use effective lambda cases
         :param epsilon:
         :return: approximated utilization
@@ -361,7 +376,7 @@ class Two_State_Hypercube():
 
             # Step 2: Convergence Test
             if abs(rho_i_ - rho_i).max() < epsilon:
-                print ('Program stop in',n,'iterations in ', (time.time() - start_time), 'secs')
+                # print ('Program stop in',n,'iterations in ', (time.time() - start_time), 'secs')
                 # print(rho_i_)
                 self.rho_approx = rho_i_
                 return rho_i_
@@ -378,9 +393,9 @@ class Two_State_Hypercube():
         N, K, pre_list, frac_j, t_mat, Mu = [self.data_dict.get(key) for key in keys]
         try:  # if self.alpha exists, it is three state. rho is the total rho
             rho = self.rho_total_approx
-            print('Three state! Rho total is:', rho)
+            # print('Three state! Rho total is:', rho)
         except:  # two state. rho is the normal approximate rho
-            print('Two state!')
+            # print('Two state!')
             rho = self.rho_approx
 
         if self.P_n is None:
@@ -403,6 +418,99 @@ class Two_State_Hypercube():
         MRT_j = np.sum(q_nj * t_mat, axis=1) / np.sum(q_nj, axis=1)
         MRT = np.sum(q_nj * t_mat)
         return MRT, MRT_j
+
+    def Get_MRT_Approx_Part(self, Lambda_mb, Lambda_ma, frac_j_mb, frac_j_ma):  # Method 1 of getting response time as in Larson
+        """
+        Get mean response time for bls and als calls respectively
+        :return:
+        """
+        keys = ['N', 'K', 'pre_list', 'frac_j', 't_mat', 'Mu']
+        N, K, pre_list, frac_j, t_mat, Mu = [self.data_dict.get(key) for key in keys]
+        try:  # if self.alpha exists, it is three state. rho is the total rho
+            rho = self.rho_total_approx
+            # print('Three state! Rho total is:', rho)
+        except:  # two state. rho is the normal approximate rho
+            # print('Two state!')
+            rho = self.rho_approx
+
+        if self.P_n is None:
+            P_n = self.Cal_P_n()
+        else:
+            P_n = self.P_n
+        self.Cal_Q(r=np.sum(rho)/N, P_n=P_n)
+        Q = self.Q
+        # This is the fraction of dispatching unit i to atom j among all dispatches
+        q_nj = np.zeros([K, N])
+        q_nj_b = np.zeros([K, N])
+        q_nj_a = np.zeros([K, N])
+        for j in range(K):
+            pre_j = pre_list[j]
+            for n in range(N):
+                q_nj[j, pre_j[n]] = Q[n] * np.prod(rho[pre_j[:n]]) * (1 - rho[pre_j[n]])
+            q_nj[j, :] /= q_nj[j, :].sum()  # normalization
+            q_nj[j, :] *= frac_j[j] * (1-P_n[-1])
+            q_nj_b[j, :] = q_nj[j, :] * frac_j_mb[j] * Lambda_mb / (frac_j_ma[j] * Lambda_ma + frac_j_mb[j] * Lambda_mb)
+            q_nj_a[j, :] = q_nj[j, :] * frac_j_ma[j] * Lambda_ma / (frac_j_ma[j] * Lambda_ma + frac_j_mb[j] * Lambda_mb)
+
+        q_nj /= q_nj.sum()
+        q_nj_b /= q_nj_b.sum()
+        q_nj_a /= q_nj_a.sum()
+        self.q_nj = q_nj  # store these values in the class
+        return np.sum(q_nj_b * t_mat), np.sum(q_nj_b * t_mat, axis=1) / np.sum(q_nj_b, axis=1),\
+            np.sum(q_nj_a * t_mat), np.sum(q_nj_a * t_mat, axis=1) / np.sum(q_nj_a, axis=1)
+
+
+    def Simulator(self, time_horizon=5000):
+        keys = ['N', 'K', 'Lambda', 'Mu', 'frac_j', 'pre_list', 't_mat']
+        N, K, Lambda, Mu, frac_j, pre_list, t_mat = [self.data_dict.get(key) for key in keys]
+        np.random.seed(1)
+        arrival_event = []
+        for j in range(K):
+            cumulative_time = 0
+            num = 0
+            while cumulative_time < time_horizon:
+                num += 1
+                np.random.seed(num)
+                cumulative_time += np.random.exponential(1 / (Lambda * frac_j[j]))
+                arrival_event.append((cumulative_time, j))
+        arrival_event = sorted(arrival_event, key=lambda x: x[0], reverse=False)  # Sort all arrivals
+        arrival_event = [i for i in arrival_event if
+                         i[0] <= time_horizon]  # Delete those arrive after the end of simulation
+
+        q_nj = np.zeros([K, N])
+        rho = np.zeros(N)
+        busy_unit = []  # every element is a tuple (unit_i, service_end_time, service_time, call_type)
+        num = 0
+        for arrival in arrival_event:
+            # e.g. arrival = (arrival_time, atom_j, call_type) = (114.514, 13, 2)
+
+            # 1. Find all units that finished call before this arrival and after former arrival
+            finished_units = [busy for busy in busy_unit if busy[1] <= arrival[0]]
+            for finish in finished_units:
+                rho[finish[0]] += finish[2]
+
+            # 2. End services and update free_units
+            # Delete all units that end the service before this arrival and after former arrival
+            busy_unit = [busy for busy in busy_unit if busy[1] > arrival[0]]
+            # Update current free units
+            free_unit = [i for i in range(N) if all(i != busy[0] for busy in busy_unit)]
+
+            # 3. Respond to new arrival call
+            pre = pre_list[arrival[1]]
+            for unit in pre:
+                if unit in free_unit:
+                    num += 1
+                    np.random.seed(num)
+                    service_time = np.random.exponential(1 / Mu)
+                    service_end_time = service_time + arrival[0]
+                    busy_unit.append((unit, service_end_time, service_time))
+                    q_nj[arrival[1]][unit] += 1
+                    break
+
+        rho /= time_horizon
+        q_nj /= np.sum(q_nj)
+        MRT = np.sum(q_nj * t_mat)
+        return rho, MRT
 
 def SumOfProduct(arr, k):  # calculates the sum product of all combanitions in arr given size k
     n = len(arr)
@@ -487,7 +595,8 @@ class Three_State_Hypercube():
         elif method in 'approximation':
             rho_sub1, rho_sub2 = self.sub1.rho_approx, self.sub2.rho_approx
         else:
-            print('Wrong method')
+            x=1
+            # print('Wrong method')
         # Specify subsystem
         if subsystem == 1:
             rho = rho_sub1
@@ -502,7 +611,8 @@ class Three_State_Hypercube():
             N_me = N_2
             N_o = N_1
         else:
-            print('Wrong subsystem!')
+            x=1
+            # print('Wrong subsystem!')
         alpha_ = np.array([0] * N_o + [
             rho[n + N_me - N_o] / (rho[n + N_me - N_o] + (1 - rho[n + N_me - N_o]) * (1 - alpha[n + N_me - N_o])) for n
             in range(N_o, N_sub_o)])
@@ -522,12 +632,12 @@ class Three_State_Hypercube():
         Lambda_2, Mu_2, frac_j_2, pre_list_2 = [self.sub2.data_dict.get(key) for key in keys_sub]
 
         if self.sub1.data_dict['Mu_vec'] is not None:
-            print("Hete Mu!")
+            # print("Hete Mu!")
             flag_diff_mu = 1
             Mu_vec_1 = self.sub1.data_dict['Mu_vec']
             Mu_vec_2 = self.sub2.data_dict['Mu_vec']
         else:
-            print("Homo Mu!")
+            # print("Homo Mu!")
             flag_diff_mu = 0
 
 
@@ -620,7 +730,7 @@ class Three_State_Hypercube():
         prob_dist = spsolve(transition_sparse, b)
 
         self.prob_dist_3state = prob_dist
-        print("------ %s seconds ------" % (time.time() - start_time))
+        # print("------ %s seconds ------" % (time.time() - start_time))
         total_time = time.time() - start_time
         self.time_exact = total_time
         # Get rho
@@ -705,7 +815,7 @@ class Three_State_Hypercube():
         self.sub1.alpha = np.zeros(N_sub1)
         self.sub2.alpha = np.zeros(N_sub2)
 
-    def Linear_Alpha(self, use_effective_lambda=True, normalize=False, epsilon=0.0001):
+    def Linear_Alpha(self, once=False, use_effective_lambda=True, normalize=False, epsilon=0.0001):
         """
         Main algorithm for estimating utilization
         :param use_effective_lambda: if use effective lambda or not
@@ -731,21 +841,34 @@ class Three_State_Hypercube():
             ite += 1
             # subsystem 1
             if flag_diff_mu == 2:
-                self.sub1.Two_State_Approx_Mu_nj()
+                self.sub1.Larson_Approx_Mu_nj()
             else:
-                self.sub1.Two_State_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize, flag_diff_mu=flag_diff_mu)
+                self.sub1.Larson_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize, flag_diff_mu=flag_diff_mu, once=once)
             alpha = self.Update_alpha(method='approx', subsystem=1)
             self.sub2.alpha = alpha
 
             # subsystem 2
             if flag_diff_mu == 2:
-                self.sub2.Two_State_Approx_Mu_nj()
+                self.sub2.Larson_Approx_Mu_nj()
             else:
-                self.sub2.Two_State_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize, flag_diff_mu=flag_diff_mu)
+                self.sub2.Larson_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize, flag_diff_mu=flag_diff_mu, once=once)
             alpha = self.Update_alpha(method='approx', subsystem=2)
-            if (max(abs(alpha - self.sub1.alpha))< epsilon):
+
+            if max(abs(alpha - self.sub1.alpha)) < epsilon:
                 run = False
+            if once:
+                self.sub1.Larson_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize,
+                                        flag_diff_mu=flag_diff_mu, once=once)
+                alpha = self.Update_alpha(method='approx', subsystem=1)
+                self.sub2.alpha = alpha
+                self.sub2.Larson_Approx(use_effective_lambda=use_effective_lambda, normalize=normalize,
+                                        flag_diff_mu=flag_diff_mu, once=once)
+                alpha = self.Update_alpha(method='approx', subsystem=2)
+                self.sub1.alpha = alpha
+                run = False
+
             self.sub1.alpha = alpha
+
         # print("------ Linear Alpha run %s seconds ------" % (time.time() - start_time))
         # print('Number of iteration:', ite)
         self.time_linearalpha = time.time() - start_time
@@ -800,7 +923,7 @@ class Three_State_Hypercube():
         MRT_2, MRT_2_j = self.sub2.Get_MRT_Approx()
         return MRT_1, MRT_2, MRT_1_j, MRT_2_j
 
-    def Simulator_Mu_nj(self, type, service_distribution="exp", seed=9001, time_horizon=500000):
+    def Simulator_Mu_nj(self, type, service_distribution="exp", seed=9001, time_horizon=50000000, time_limit=500):
         """
         Do simulation of heterogeneous mu
         :param type: "mat" for mu_ij; "vec" for mu_i (among units)
@@ -808,7 +931,7 @@ class Three_State_Hypercube():
         :param time_horizon: time of simulation
         :return: MRT_1, MRT_2, rho_total/time_horizon
         """
-        start_time = time.time()
+        start_time_init = time.time()
         np.random.seed(seed)
         keys = ['N', 'N_1', 'N_2', 'K']
         N, N_1, N_2, K = [self.data_dict_1.get(key) for key in keys]
@@ -844,6 +967,7 @@ class Three_State_Hypercube():
         arrival_event = [i for i in arrival_event if
                          i[0] <= time_horizon]  # Delete those arrive after the end of simulation
 
+        start_time = time.time()
         rho_sub1 = np.zeros(N)
         rho_sub2 = np.zeros(N)
         rho_total = np.zeros(N)
@@ -855,6 +979,11 @@ class Three_State_Hypercube():
         for arrival in arrival_event:
             # For all arrivals, where arrival = (arrival_time, atom_j, call_type)
             # e.g. arrival = (114.514, 13, 2)
+
+            # 0. Check time stop
+            if time.time() - start_time > time_limit:
+                time_horizon = arrival[0]
+                break
 
             # 1. Find all units that finished call before this arrival and after former arrival
             finished_units = [busy for busy in busy_unit if busy[1] <= arrival[0]]
@@ -905,8 +1034,8 @@ class Three_State_Hypercube():
                     service_end_time = service_time + arrival[0]
                     busy_unit.append((unit, service_end_time, service_time, arrival[2]))
                     break
-        print("######## Simulate ########")
-        print("Run for", time.time() - start_time, "seconds")
+        # print("######## Simulate ########")
+        # print("Run for", time.time() - start_time, "seconds")
         rho_sim_1 = [i for i in rho_sub1 / time_horizon if i != 0]
         rho_sim_2 = [i for i in rho_sub2 / time_horizon if i != 0]
         q_nj_1 = np.hstack((q_nj_1[:, :N_1], q_nj_1[:, N_1 + N_2:]))
@@ -915,7 +1044,9 @@ class Three_State_Hypercube():
         q_nj_2 /= np.sum(q_nj_2)
         MRT_1 = np.sum(q_nj_1 * t_mat_1)
         MRT_2 = np.sum(q_nj_2 * t_mat_2)
-        return MRT_1, MRT_2, rho_total/time_horizon, rho_sim_1, rho_sim_2, time.time()-start_time
+        MRT_1_j = np.sum(q_nj_1/np.sum(q_nj_1,axis=1,keepdims=True) * t_mat_1, axis=1)
+        MRT_2_j = np.sum(q_nj_2/np.sum(q_nj_2,axis=1,keepdims=True) * t_mat_2, axis=1)
+        return MRT_1, MRT_2, rho_total/time_horizon, rho_sim_1, rho_sim_2, time.time()-start_time_init, MRT_1_j, MRT_2_j
 
     class Subsystem(
         Two_State_Hypercube):  # This class belongs to the three-state class and is a children class of Two_state_hyper
@@ -998,27 +1129,3 @@ class Three_State_Hypercube():
             MRT_j = np.sum(q_nj * t_mat, axis=1) / np.sum(q_nj, axis=1)
             return MRT, MRT_j
 
-
-system = Three_State_Hypercube({'Lambda_1': 10, 'Mu_1': 20, 'Lambda_2': 10, 'Mu_2': 20})
-system.Update_Parameters(N=7, N_1=2, N_2=3, K=30)
-
-system.Creat_Two_Subsystems()
-system.sub1.Random_Mu(20, radius=0.8)
-system.sub1.Random_Pref(seed=1)
-system.sub1.Random_Time_Mat(t_min=1, t_max=10, seed=1)
-system.sub1.Random_Fraction(seed=1)
-
-system.sub2.Random_Mu(20, radius=0.8)
-system.sub2.Random_Pref(seed=1)
-system.sub2.Random_Time_Mat(t_min=1, t_max=10, seed=1)
-system.sub2.Random_Fraction(seed=1)
-
-system.Solve_3state_Hypercube()
-print(system.rho_hyper_1, system.rho_hyper_2, system.Get_MRT_3state())
-
-system.Reset_Alpha()
-system.Linear_Alpha()
-print(system.sub1.rho_approx, system.sub2.rho_approx, system.Get_MRT_Approx_3state())
-
-MRT_1, MRT_2, _, rho_sim_1, rho_sim_2, _ = system.Simulator_Mu_nj(type="vec")
-print(rho_sim_1, rho_sim_2, MRT_1, MRT_2)
