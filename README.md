@@ -4,6 +4,7 @@ This code is for the algorithm we developed in the paper "Approximating the Perf
 
 In this project, we provide the code for the algorithm discussed in the paper, which analyzes the three-state emergency service system using an exact method, our approximation method, and simulation. Additionally, an interactive interface is available, demonstrating how our algorithm and code can be applied in a real-life scenario. Users can drag and allocate different units and receive immediate results. A demonstration video is also provided.
 
+<img src="assets/Saint_Paul.png" width="600"/>
 
 
 # Installation Instructions
