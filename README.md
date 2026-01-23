@@ -23,7 +23,7 @@ In this project, we provide the code for the algorithm discussed in the paper, w
   - Place `Three_States.py` and `block_prob.py` in the same folder.
   - In `Three_States.py`, a sample code for implementation is provided.
 - Interactive Interface:
-  - Download the zipped files from https://ufile.io/8dbe0ovg.
+  - Download all files from https://drive.google.com/drive/folders/1sGvobiZ8aBEFkQ3rARqRTpukLWxrKA7O?usp=sharing.
   - Run `map_hypercube.exe` to use the interactive tool.
     - Note that `map_hypercube.exe` should be placed in the same directory with directory `tracts` and `figures`
 
@@ -134,3 +134,4 @@ print(rho_sim_1, rho_sim_2, MRT_1, MRT_2)
 
 - Cheng Hua: cheng.hua@sjtu.edu.cn
 - Tianyi Ma: tm693@cornell.edu
+
