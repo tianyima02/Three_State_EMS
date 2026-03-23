@@ -3,6 +3,20 @@ import time
 
 import numpy as np
 
+def ErlangLoss(Lambda, Mu, N = None): # take it out once figured out what was the problem for the error. This is now a copy of the function in dispatch_main
+    # The Erlangloss Model is exactly the same  as MMN0 and this returns the whole probability distribution
+    # Solves the Erlang loss system
+    if N == 0: # if there is 0 unit. The block probability is 1
+        return [1]
+    if N is not None: # If there is a size N, we constitute the Lambda and Mu vectors manually
+        Lambda = np.ones(N)*Lambda
+        Mu = Mu*(np.arange(N)+1)
+    else: # if the Lambdas and Mus are already given in vector form then no need to do anything
+        N = len(Lambda)
+    LoM = [1] + [l/m for l,m in zip(Lambda, Mu)]
+    Prod = [np.prod(LoM[0:i]) for i in range(1,N+2)]
+    P_n = Prod/sum(Prod)
+    return P_n
 
 def Get_Effective_Lambda(offered_load, mu, n_units):
     rho_prev = 0.0
@@ -19,19 +33,6 @@ def Get_Effective_Lambda(offered_load, mu, n_units):
         if steps > 100:
             break
     return rho * mu
-
-
-def ErlangLoss(lam, mu, n_units=None):
-    if n_units == 0:
-        return [1]
-    if n_units is not None:
-        lam = np.ones(n_units) * lam
-        mu = mu * (np.arange(n_units) + 1)
-    else:
-        n_units = len(lam)
-    load_over_mu = [1] + [l / m for l, m in zip(lam, mu)]
-    prod = [np.prod(load_over_mu[0:i]) for i in range(1, n_units + 2)]
-    return prod / sum(prod)
 
 
 def SumOfProduct(arr, k):
