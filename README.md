@@ -2,7 +2,7 @@
 
 This code is for the algorithm we developed in the paper "Approximating the Performance of Three-State Emergency Service Systems." It includes an interactive tool using real EMS data to aid the operational decisions of EMS managers.
 
-In this project, we provide the code for the algorithm discussed in the paper, which analyzes the three-state emergency service system using an exact method, our approximation method, and simulation. Additionally, an interactive interface is available, demonstrating how our algorithm and code can be applied in a real-life scenario. Users can drag and allocate different units and receive immediate results. A demonstration video is also provided.
+In this project, we provide the code for the algorithm discussed in the paper, which analyzes the three-state emergency service system using an exact method, our approximation method, and simulation. Additionally, an [interactive interface](https://tianyima02.github.io/Three_State_EMS/) is available, demonstrating how our algorithm and code can be applied in a real-life scenario. Users can drag and allocate different units and receive immediate results. A demonstration [video](https://github.com/tianyima02/Three_State_EMS/blob/main/Interactive_Interface/interface.mp4) (needs to be downloaded) is also provided.
 
 <img src="assets/Saint_Paul.png" width="600"/>
 
@@ -15,17 +15,18 @@ In this project, we provide the code for the algorithm discussed in the paper, w
   - Python is required.
   - Both MacOS and Windows have been tested and are confirmed to work.
 - Interactive Tool:
-  - Windows is required to run the interactive tool.
+  - Webpage that can access Internet
 
 ## Codes
 
-- Algorithm Codes: 
+- Algorithm Codes:
   - Place `Three_States.py` and `block_prob.py` in the same folder.
   - In `Three_States.py`, a sample code for implementation is provided.
 - Interactive Interface:
-  - Download all files from https://drive.google.com/drive/folders/1sGvobiZ8aBEFkQ3rARqRTpukLWxrKA7O?usp=sharing.
-  - Run `map_hypercube.exe` to use the interactive tool.
-    - Note that `map_hypercube.exe` should be placed in the same directory with directory `tracts` and `figures`
+  1.  to webpage [https://tianyima02.github.io/Three_State_EMS/](https://tianyima02.github.io/Three_State_EMS/)
+  2. It will show “Loading, please wait” for a while
+  3. After it shows “Ready to start. Please click or touch page”, click anywhere to enter.
+  4. It may take a while until you see a webpage that shows a map. Then, you can interact with the map!
 
 
 
