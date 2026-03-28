@@ -23,7 +23,7 @@ In this project, we provide the code for the algorithm discussed in the paper, w
   - Place `Three_States.py` and `block_prob.py` in the same folder.
   - In `Three_States.py`, a sample code for implementation is provided.
 - Interactive Interface:
-  1.  to webpage [https://tianyima02.github.io/Three_State_EMS/](https://tianyima02.github.io/Three_State_EMS/)
+  1.  Go to webpage [https://tianyima02.github.io/Three_State_EMS/](https://tianyima02.github.io/Three_State_EMS/)
   2. It will show “Loading, please wait” for a while
   3. After it shows “Ready to start. Please click or touch page”, click anywhere to enter.
   4. It may take a while until you see a webpage that shows a map. Then, you can interact with the map!
