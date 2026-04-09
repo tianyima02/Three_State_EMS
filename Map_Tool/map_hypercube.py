@@ -543,8 +543,8 @@ class MapHypercubeGame:
         self.color_map_f = np.array([], dtype=int)
 
     def can_analyze(self):
-        return True
         # return (len(self.med_group) + len(self.joint_group)) >= 2 and (len(self.fire_group) + len(self.joint_group)) >= 2
+        return (len(self.med_group) + len(self.joint_group)) >= 1 and (len(self.fire_group) + len(self.joint_group)) >= 1
 
     def group_for_kind(self, kind):
         if kind == MED:
